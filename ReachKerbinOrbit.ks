@@ -119,6 +119,64 @@ function bxbAscendingOutsideAtmosphere {
     lock throttle to 0.
 }
 
+// Define maneuver node execution function
+function bxbExecuteManeuverNode {
+    print "Executing maneuver node...".
+    // Initialize throttle and calculate burn duration
+    set tset to 0.
+    lock throttle to tset.
+
+    set max_acc to ship:maxthrust / ship:mass.
+    set burn_duration to mynode:deltav:mag / max_acc.
+
+    print "Burn duration: " + round(burn_duration, 1) + "s".
+
+    // Warp to the burn start time
+    kuniverse:timewarp:warpto(time:seconds + eta:apoapsis - burn_duration/2 - 60).
+    wait until kuniverse:timewarp:issettled.
+
+    // Align with the maneuver node
+    print "Aligning with the maneuver node...".
+    lock steering to mynode:deltav.
+    wait until vAng(ship:facing:vector, mynode:deltav) < 1.
+    print "Alignment complete.".
+
+    // Wait until it's time to start the burn
+    print "Waiting to " + burn_duration/2 +" second mark before starting maneuver burn".
+    wait until mynode:eta <= (burn_duration/2).
+    print "Starting burn...".
+
+    set done to false.
+    set dv0 to mynode:deltav.
+
+    // Execute the burn
+    until done {
+        set max_acc to ship:maxthrust / ship:mass.
+        set tset to min(mynode:deltav:mag/max_acc,1).
+
+        if vdot(dv0, mynode:deltav) < 0 {
+            print "End burn, remain dv " + round(mynode:deltav:mag, 1) + "m/s, vdot: " + round(vdot(dv0, mynode:deltav),1).
+            lock throttle to 0.
+            break.
+        }
+
+        if mynode:deltav:mag < 0.1 {
+            print "Finalizing burn, remain dv " + round(mynode:deltav:mag, 1) + "m/s, vdot: " + round(vdot(dv0, mynode:deltav),1).
+            wait until vdot(dv0, mynode:deltav) < 0.5.
+
+            lock throttle to 0.
+            set done to True.
+        }
+    }
+
+    // Remove the maneuver node
+    remove mynode.
+
+    // Final adjustments
+    lock steering to heading(90, 0).
+    print "Maneuver node executed.".
+}
+
 // Main loop
 print "Starting ascent to Kerbin orbit...".
 // Perform gravity turn - State 1
@@ -127,58 +185,7 @@ bxbGravityTurn().
 bxbAscendingOutsideAtmosphere(). 
 // Create maneuver node - State 3
 bxbCreateCircularizationNode().
-
-// Initialize throttle and calculate burn duration
-set tset to 0.
-lock throttle to tset.
-
-set max_acc to ship:maxthrust / ship:mass.
-set burn_duration to mynode:deltav:mag / max_acc.
-
-print "Burn duration: " + round(burn_duration, 1) + "s".
-
-// Warp to the burn start time
-kuniverse:timewarp:warpto(time:seconds + eta:apoapsis - burn_duration/2 - 60).
-wait until kuniverse:timewarp:issettled.
-
-// Align with the maneuver node
-print "Aligning with the maneuver node...".
-lock steering to mynode:deltav.
-wait until vAng(ship:facing:vector, mynode:deltav) < 1.
-print "Alignment complete.".
-
-// Wait until it's time to start the burn
-print "Waiting to " + burn_duration/2 +" second mark before starting maneuver burn".
-wait until mynode:eta <= (burn_duration/2).
-print "Starting burn...".
-
-set done to false.
-set dv0 to mynode:deltav.
-
-// Execute the burn
-until done {
-    set max_acc to ship:maxthrust / ship:mass.
-    set tset to min(mynode:deltav:mag/max_acc,1).
-
-    if vdot(dv0, mynode:deltav) < 0 {
-        print "End burn, remain dv " + round(mynode:deltav:mag, 1) + "m/s, vdot: " + round(vdot(dv0, mynode:deltav),1).
-        lock throttle to 0.
-        break.
-    }
-
-    if mynode:deltav:mag < 0.1 {
-        print "Finalizing burn, remain dv " + round(mynode:deltav:mag, 1) + "m/s, vdot: " + round(vdot(dv0, mynode:deltav),1).
-        wait until vdot(dv0, mynode:deltav) < 0.5.
-
-        lock throttle to 0.
-        set done to True.
-    }
-}
-
-// Remove the maneuver node
-remove mynode.
-
-// Final adjustments
-lock steering to heading(90, 0).
+// Maneauver to circularize orbit execution - State 4
+bxbExecuteManeuverNode().
 
 print "Circularization complete.".
