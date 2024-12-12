@@ -5,14 +5,22 @@ set apoapsis_threshold to 80000. // Apoapsis height threshold to change pitch to
 set altitude_threshold to 10000. // Altitude threshold to complete pitch change to 45 degrees
 set gravity_turn_end to 10000. // End gravity turn at 10 km
 
+// Initialize PID controller variables for smoother error correction
+set Kp to 0.0005. // Decreased proportional gain
+set Ki to 0.0002. // Increased integral gain
+set Kd to 0.0002. // Decreased derivative gain
+set integral to 0.
+set previous_error to 0.
+// Adjust throttle based on time to apoapsis using PID controller
+set setpoint to 50. // Desired time to apoapsis
+set pid_output to 1. // Initial PID output
+
 // Define stage properties directly
 set lockInitialAltitude to false.
 
 // Launch the rocket
 lock throttle to 1. // Set throttle to maximum
 stage. // Activate the first stage
-
-set currentThrottle to throttle.
 
 // Main loop
 print "Starting gravity turn...".
@@ -28,33 +36,38 @@ until ship:apoapsis >= apoapsis_threshold {
         // Calculate pitch based on altitude
         set pitch to 90 - (altitude - initialAltitude) / (gravity_turn_end - initialAltitude) * 45.
         lock steering to heading(90, pitch).
+        // Apply the PID output to throttle
+        lock throttle to pid_output.
         print "(2) Time: " + round(missiontime, 1) + "s, Altitude: " + round(altitude, 1) + "m, Velocity: " + round(ship:velocity:surface:mag, 1) + "m/s, Pitch: " + round(pitch, 1) + "°".
     } else if altitude >= altitude_threshold and ship:apoapsis < apoapsis_threshold {
         // Adjust pitch based on altitude
         if ship:altitude > 40000 {
-            set pitch to 15.
+            set pitch to 20.
         } else {
             set pitch to 45.
         }
         lock steering to heading(90, pitch).
+        // Apply the PID output to throttle
+        lock throttle to pid_output.
         print "(3) Time: " + round(missiontime, 1) + "s, Altitude: " + round(altitude, 1) + "m, Velocity: " + round(ship:velocity:surface:mag, 1) + "m/s, Pitch: " + round(pitch, 1) + "°".
     } else {
         lock steering to heading(90, 90).
+        // Apply the PID output to throttle
+        lock throttle to 1.
         print "(1) Time: " + round(missiontime, 1) + "s, Altitude: " + round(altitude, 1) + "m, Velocity: " + round(ship:velocity:surface:mag, 1) + "m/s, Pitch: " + round(pitch, 1) + "°".
     }
 
-    // Adjust throttle based on time to apoapsis
-    if eta:apoapsis > 50 {
-        if throttle > 0.1 {
-            set currentThrottle to currentThrottle - 0.002.
-            lock throttle to currentThrottle.
-        }
-    } else if eta:apoapsis < 50 {
-        if throttle < 1 {
-            set currentThrottle to currentThrottle + 0.002.
-            lock throttle to currentThrottle.
-        }
+    set measured_value to eta:apoapsis.
+    set pid_output to PID(setpoint, measured_value, Kp, Ki, Kd, integral, previous_error).
+
+    // Clamp the PID output to throttle limits
+    set pid_output to max(0, min(1, pid_output)).
+
+    if pid_output < 0.15 {
+        set pid_output to 0.15.
     }
+
+    wait 0.1.
 }
 
 // Cut off the throttle
@@ -101,11 +114,15 @@ kuniverse:timewarp:warpto(time:seconds + eta:apoapsis - burn_duration/2 - 60).
 wait until kuniverse:timewarp:issettled.
 
 // Align with the maneuver node
+print "Aligning with the maneuver node...".
 lock steering to mynode:deltav.
 wait until vAng(ship:facing:vector, mynode:deltav) < 1.
+print "Alignment complete.".
 
 // Wait until it's time to start the burn
+print "Waiting " + mynode:eta - burn_duration/2 +" seconds before starting maneuver".
 wait until mynode:eta <= (burn_duration/2).
+print "Starting burn...".
 
 set done to false.
 set dv0 to mynode:deltav.
@@ -137,3 +154,14 @@ remove mynode.
 lock steering to heading(90, 0).
 
 print "Circularization complete.".
+
+// Define PID controller function
+function PID {
+    parameter setpoint, measured_value, Kp, Ki, Kd, integral, previous_error.
+    set error to setpoint - measured_value.
+    set integral to integral + error * time:seconds.
+    set derivative to (error - previous_error) / time:seconds.
+    set output to Kp * error + Ki * integral + Kd * derivative.
+    set previous_error to error.
+    return output.
+}
