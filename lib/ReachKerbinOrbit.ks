@@ -33,7 +33,6 @@ function PID {
 function bxbGravityTurn {
     // Launch the rocket
     lock throttle to 1. // Set throttle to maximum
-    print "(State 1) Starting gravity turn...".
 
     // Burn until apoapsis reaches the threshold
     until ship:apoapsis >= apoapsis_threshold {
@@ -48,7 +47,7 @@ function bxbGravityTurn {
             lock steering to heading(90, pitch).
             // Apply the PID output to throttle
             lock throttle to pid_output.
-            print "(2) Time: " + round(missiontime, 1) + "s, Altitude: " + round(altitude, 1) + "m, Velocity: " + round(ship:velocity:surface:mag, 1) + "m/s, Pitch: " + round(pitch, 1) + "°".
+            bxbDisplayMissionInfo("|----- Gravity Turn / State 1 -----|").
         } else if altitude >= altitude_threshold and ship:apoapsis < apoapsis_threshold {
             // Adjust pitch based on altitude
             if ship:altitude > 40000 {
@@ -59,12 +58,12 @@ function bxbGravityTurn {
             lock steering to heading(90, pitch).
             // Apply the PID output to throttle
             lock throttle to pid_output.
-            print "(3) Time: " + round(missiontime, 1) + "s, Altitude: " + round(altitude, 1) + "m, Velocity: " + round(ship:velocity:surface:mag, 1) + "m/s, Pitch: " + round(pitch, 1) + "°".
+            bxbDisplayMissionInfo("|----- Gravity Turn / State 1 -----|").
         } else {
             lock steering to heading(90, 90).
             // Apply the PID output to throttle
             lock throttle to 1.
-            print "(1) Time: " + round(missiontime, 1) + "s, Altitude: " + round(altitude, 1) + "m, Velocity: " + round(ship:velocity:surface:mag, 1) + "m/s, Pitch: " + round(pitch, 1) + "°".
+            bxbDisplayMissionInfo("|----- Gravity Turn / State 1 -----|").
         }
 
         set measured_value to eta:apoapsis.
@@ -82,12 +81,10 @@ function bxbGravityTurn {
 
     // Cut off the throttle
     lock throttle to 0.
-    print "Gravity turn complete, reaching required altitude to circularize...".
 }
 
 // Define circularization node creation function
 function bxbCreateCircularizationNode {
-    print "Creating circularization node...".
     // Calculate the required deltaV for circularization
     set targetV to sqrt(ship:body:mu/(ship:orbit:body:radius + ship:orbit:apoapsis)).
     set apVel to sqrt(((1 - ship:orbit:ECCENTRICITY) * ship:orbit:body:mu) / ((1 + ship:orbit:ECCENTRICITY) * ship:orbit:SEMIMAJORAXIS)).
@@ -96,7 +93,7 @@ function bxbCreateCircularizationNode {
     // Create a new maneuver node for circularization
     set mynode to node(time:seconds + eta:apoapsis, 0, 0, dv).
     add mynode.
-
+    bxbDisplayMissionInfo("|----- Circularization Node Creation / State 3 -----|").
     print "Node time: " + mynode:TIME. // Print the time of the node
     print "Circularization node created.".
 }
@@ -106,13 +103,14 @@ function bxbAscendingOutsideAtmosphere {
     // Wait until the ship reaches 70 km altitude
     until ship:altitude >= 70000 {
         lock steering to heading(90, 5).
-        
+        bxbDisplayMissionInfo("|----- Ascending above atmosphere / State 2 -----|").
         // Adjust throttle based on apoapsis height
         if ship:apoapsis < apoapsis_threshold {
             lock throttle to 0.2.
         } else {
             lock throttle to 0.
         }
+        wait 0.1.
     }
 
     // Cut off the throttle
@@ -121,7 +119,7 @@ function bxbAscendingOutsideAtmosphere {
 
 // Define maneuver node execution function
 function bxbExecuteManeuverNode {
-    print "Executing maneuver node...".
+    bxbDisplayMissionInfo("|----- Executing maneuver node / State 4 -----|").
     // Initialize throttle and calculate burn duration
     set tset to 0.
     lock throttle to tset.
@@ -155,12 +153,14 @@ function bxbExecuteManeuverNode {
         set tset to min(mynode:deltav:mag/max_acc,1).
 
         if vdot(dv0, mynode:deltav) < 0 {
+            bxbDisplayMissionInfo("|----- Executing maneuver node / State 4 -----|").
             print "End burn, remain dv " + round(mynode:deltav:mag, 1) + "m/s, vdot: " + round(vdot(dv0, mynode:deltav),1).
             lock throttle to 0.
             break.
         }
 
         if mynode:deltav:mag < 0.1 {
+            bxbDisplayMissionInfo("|----- Executing maneuver node / State 4 -----|").
             print "Finalizing burn, remain dv " + round(mynode:deltav:mag, 1) + "m/s, vdot: " + round(vdot(dv0, mynode:deltav),1).
             wait until vdot(dv0, mynode:deltav) < 0.5.
 
@@ -177,15 +177,30 @@ function bxbExecuteManeuverNode {
     print "Maneuver node executed.".
 }
 
-// Main loop
-print "Starting ascent to Kerbin orbit...".
-// Perform gravity turn - State 1
-bxbGravityTurn(). 
-// Ascend to apoapsis - State 2
-bxbAscendingOutsideAtmosphere(). 
-// Create maneuver node - State 3
-bxbCreateCircularizationNode().
-// Maneauver to circularize orbit execution - State 4
-bxbExecuteManeuverNode().
+// Display mission information
+function bxbDisplayMissionInfo {
+    parameter l_customMessage is "General mission information: ".
+    clearscreen.
+    print l_customMessage.
+    print "Time:             " + round(missiontime, 1) + " s.".
+    print "Altitude:         " + round(altitude, 1) + " m.".
+    print "Velocity:         " + round(ship:velocity:surface:mag, 1) + " m/s.".
+    print "Pitch:            " + round(pitch, 1) + "°".
+    print "Time to apoapsis: " + round(eta:apoapsis, 1) + " s.".
+    print "Throttle:         " + round(throttle * 100, 1) + "%".
+}
 
-print "Circularization complete.".
+global function bxbReachKerbinOrbit {
+    // Main loop
+    print "Starting ascent to Kerbin orbit...".
+    // Perform gravity turn - State 1
+    bxbGravityTurn(). 
+    // Ascend to apoapsis - State 2
+    bxbAscendingOutsideAtmosphere(). 
+    // Create maneuver node - State 3
+    bxbCreateCircularizationNode().
+    // Maneauver to circularize orbit execution - State 4
+    bxbExecuteManeuverNode().
+
+    print "Circularization complete.".
+}
