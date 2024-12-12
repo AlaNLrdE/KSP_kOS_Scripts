@@ -101,8 +101,8 @@ function bxbCreateCircularizationNode {
     print "Circularization node created.".
 }
 
-// Define ascending to apoapsis function
-function bxbAscendingToApoapsis {
+// Define ascending outsise atmosphere and compensating for drag function
+function bxbAscendingOutsideAtmosphere {
     // Wait until the ship reaches 70 km altitude
     until ship:altitude >= 70000 {
         lock steering to heading(90, 5).
@@ -124,7 +124,7 @@ print "Starting ascent to Kerbin orbit...".
 // Perform gravity turn - State 1
 bxbGravityTurn(). 
 // Ascend to apoapsis - State 2
-bxbAscendingToApoapsis(). 
+bxbAscendingOutsideAtmosphere(). 
 // Create maneuver node - State 3
 bxbCreateCircularizationNode().
 
