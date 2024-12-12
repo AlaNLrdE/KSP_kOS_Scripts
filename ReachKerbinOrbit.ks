@@ -31,7 +31,9 @@ function PID {
 
 // Define gravity turn function
 function bxbGravityTurn {
-    print "Starting gravity turn...".
+    // Launch the rocket
+    lock throttle to 1. // Set throttle to maximum
+    print "(State 1) Starting gravity turn...".
 
     // Burn until apoapsis reaches the threshold
     until ship:apoapsis >= apoapsis_threshold {
@@ -83,39 +85,48 @@ function bxbGravityTurn {
     print "Gravity turn complete, reaching required altitude to circularize...".
 }
 
+// Define circularization node creation function
+function bxbCreateCircularizationNode {
+    print "Creating circularization node...".
+    // Calculate the required deltaV for circularization
+    set targetV to sqrt(ship:body:mu/(ship:orbit:body:radius + ship:orbit:apoapsis)).
+    set apVel to sqrt(((1 - ship:orbit:ECCENTRICITY) * ship:orbit:body:mu) / ((1 + ship:orbit:ECCENTRICITY) * ship:orbit:SEMIMAJORAXIS)).
+    set dv to targetV - apVel.
 
-// Launch the rocket
-lock throttle to 1. // Set throttle to maximum
-stage. // Activate the first stage
+    // Create a new maneuver node for circularization
+    set mynode to node(time:seconds + eta:apoapsis, 0, 0, dv).
+    add mynode.
 
-// Main loop
-bxbGravityTurn(). // Perform gravity turn
-
-// Wait until the ship reaches 70 km altitude
-until ship:altitude >= 70000 {
-    lock steering to heading(90, 5).
-    
-    // Adjust throttle based on apoapsis height
-    if ship:apoapsis < apoapsis_threshold {
-        lock throttle to 0.2.
-    } else {
-        lock throttle to 0.
-    }
+    print "Node time: " + mynode:TIME. // Print the time of the node
+    print "Circularization node created.".
 }
 
-// Cut off the throttle
-lock throttle to 0.
+// Define ascending to apoapsis function
+function bxbAscendingToApoapsis {
+    // Wait until the ship reaches 70 km altitude
+    until ship:altitude >= 70000 {
+        lock steering to heading(90, 5).
+        
+        // Adjust throttle based on apoapsis height
+        if ship:apoapsis < apoapsis_threshold {
+            lock throttle to 0.2.
+        } else {
+            lock throttle to 0.
+        }
+    }
 
-// Calculate the required deltaV for circularization
-set targetV to sqrt(ship:body:mu/(ship:orbit:body:radius + ship:orbit:apoapsis)).
-set apVel to sqrt(((1 - ship:orbit:ECCENTRICITY) * ship:orbit:body:mu) / ((1 + ship:orbit:ECCENTRICITY) * ship:orbit:SEMIMAJORAXIS)).
-set dv to targetV - apVel.
+    // Cut off the throttle
+    lock throttle to 0.
+}
 
-// Create a new maneuver node for circularization
-set mynode to node(time:seconds + eta:apoapsis, 0, 0, dv).
-add mynode.
-
-print mynode:TIME. // Print the time of the node
+// Main loop
+print "Starting ascent to Kerbin orbit...".
+// Perform gravity turn - State 1
+bxbGravityTurn(). 
+// Ascend to apoapsis - State 2
+bxbAscendingToApoapsis(). 
+// Create maneuver node - State 3
+bxbCreateCircularizationNode().
 
 // Initialize throttle and calculate burn duration
 set tset to 0.
