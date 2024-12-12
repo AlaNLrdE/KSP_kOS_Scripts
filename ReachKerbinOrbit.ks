@@ -120,7 +120,7 @@ wait until vAng(ship:facing:vector, mynode:deltav) < 1.
 print "Alignment complete.".
 
 // Wait until it's time to start the burn
-print "Waiting " + mynode:eta - burn_duration/2 +" seconds before starting maneuver".
+print "Waiting to " + burn_duration/2 +" second mark before starting maneuver burn".
 wait until mynode:eta <= (burn_duration/2).
 print "Starting burn...".
 
