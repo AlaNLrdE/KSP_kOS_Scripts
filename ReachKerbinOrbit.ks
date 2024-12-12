@@ -18,61 +18,78 @@ set pid_output to 1. // Initial PID output
 // Define stage properties directly
 set lockInitialAltitude to false.
 
+// Define PID controller function
+function PID {
+    parameter l_setpoint, l_measured_value, l_Kp, l_Ki, l_Kd, l_integral, l_previous_error.
+    set l_error to l_setpoint - l_measured_value.
+    set l_integral to l_integral + l_error * time:seconds.
+    set l_derivative to (l_error - l_previous_error) / time:seconds.
+    set output to l_Kp * l_error + l_Ki * l_integral + l_Kd * l_derivative.
+    set previous_error to l_error.
+    return output.
+}
+
+// Define gravity turn function
+function bxbGravityTurn {
+    print "Starting gravity turn...".
+
+    // Burn until apoapsis reaches the threshold
+    until ship:apoapsis >= apoapsis_threshold {
+        // Update pitch based on speed and apoapsis height
+        if ship:velocity:surface:mag > speed_threshold and ship:apoapsis < apoapsis_threshold and altitude < altitude_threshold {
+            if not lockInitialAltitude {
+                set lockInitialAltitude to true.
+                set initialAltitude to altitude.
+            }
+            // Calculate pitch based on altitude
+            set pitch to 90 - (altitude - initialAltitude) / (gravity_turn_end - initialAltitude) * 45.
+            lock steering to heading(90, pitch).
+            // Apply the PID output to throttle
+            lock throttle to pid_output.
+            print "(2) Time: " + round(missiontime, 1) + "s, Altitude: " + round(altitude, 1) + "m, Velocity: " + round(ship:velocity:surface:mag, 1) + "m/s, Pitch: " + round(pitch, 1) + "°".
+        } else if altitude >= altitude_threshold and ship:apoapsis < apoapsis_threshold {
+            // Adjust pitch based on altitude
+            if ship:altitude > 40000 {
+                set pitch to 20.
+            } else {
+                set pitch to 45.
+            }
+            lock steering to heading(90, pitch).
+            // Apply the PID output to throttle
+            lock throttle to pid_output.
+            print "(3) Time: " + round(missiontime, 1) + "s, Altitude: " + round(altitude, 1) + "m, Velocity: " + round(ship:velocity:surface:mag, 1) + "m/s, Pitch: " + round(pitch, 1) + "°".
+        } else {
+            lock steering to heading(90, 90).
+            // Apply the PID output to throttle
+            lock throttle to 1.
+            print "(1) Time: " + round(missiontime, 1) + "s, Altitude: " + round(altitude, 1) + "m, Velocity: " + round(ship:velocity:surface:mag, 1) + "m/s, Pitch: " + round(pitch, 1) + "°".
+        }
+
+        set measured_value to eta:apoapsis.
+        set pid_output to PID(setpoint, measured_value, Kp, Ki, Kd, integral, previous_error).
+
+        // Clamp the PID output to throttle limits
+        set pid_output to max(0, min(1, pid_output)).
+
+        if pid_output < 0.15 {
+            set pid_output to 0.15.
+        }
+
+        wait 0.1.
+    }
+
+    // Cut off the throttle
+    lock throttle to 0.
+    print "Gravity turn complete, reaching required altitude to circularize...".
+}
+
+
 // Launch the rocket
 lock throttle to 1. // Set throttle to maximum
 stage. // Activate the first stage
 
 // Main loop
-print "Starting gravity turn...".
-
-// Burn until apoapsis reaches the threshold
-until ship:apoapsis >= apoapsis_threshold {
-    // Update pitch based on speed and apoapsis height
-    if ship:velocity:surface:mag > speed_threshold and ship:apoapsis < apoapsis_threshold and altitude < altitude_threshold {
-        if not lockInitialAltitude {
-            set lockInitialAltitude to true.
-            set initialAltitude to altitude.
-        }
-        // Calculate pitch based on altitude
-        set pitch to 90 - (altitude - initialAltitude) / (gravity_turn_end - initialAltitude) * 45.
-        lock steering to heading(90, pitch).
-        // Apply the PID output to throttle
-        lock throttle to pid_output.
-        print "(2) Time: " + round(missiontime, 1) + "s, Altitude: " + round(altitude, 1) + "m, Velocity: " + round(ship:velocity:surface:mag, 1) + "m/s, Pitch: " + round(pitch, 1) + "°".
-    } else if altitude >= altitude_threshold and ship:apoapsis < apoapsis_threshold {
-        // Adjust pitch based on altitude
-        if ship:altitude > 40000 {
-            set pitch to 20.
-        } else {
-            set pitch to 45.
-        }
-        lock steering to heading(90, pitch).
-        // Apply the PID output to throttle
-        lock throttle to pid_output.
-        print "(3) Time: " + round(missiontime, 1) + "s, Altitude: " + round(altitude, 1) + "m, Velocity: " + round(ship:velocity:surface:mag, 1) + "m/s, Pitch: " + round(pitch, 1) + "°".
-    } else {
-        lock steering to heading(90, 90).
-        // Apply the PID output to throttle
-        lock throttle to 1.
-        print "(1) Time: " + round(missiontime, 1) + "s, Altitude: " + round(altitude, 1) + "m, Velocity: " + round(ship:velocity:surface:mag, 1) + "m/s, Pitch: " + round(pitch, 1) + "°".
-    }
-
-    set measured_value to eta:apoapsis.
-    set pid_output to PID(setpoint, measured_value, Kp, Ki, Kd, integral, previous_error).
-
-    // Clamp the PID output to throttle limits
-    set pid_output to max(0, min(1, pid_output)).
-
-    if pid_output < 0.15 {
-        set pid_output to 0.15.
-    }
-
-    wait 0.1.
-}
-
-// Cut off the throttle
-lock throttle to 0.
-print "Gravity turn complete, reaching required altitude to circularize...".
+bxbGravityTurn(). // Perform gravity turn
 
 // Wait until the ship reaches 70 km altitude
 until ship:altitude >= 70000 {
@@ -154,14 +171,3 @@ remove mynode.
 lock steering to heading(90, 0).
 
 print "Circularization complete.".
-
-// Define PID controller function
-function PID {
-    parameter setpoint, measured_value, Kp, Ki, Kd, integral, previous_error.
-    set error to setpoint - measured_value.
-    set integral to integral + error * time:seconds.
-    set derivative to (error - previous_error) / time:seconds.
-    set output to Kp * error + Ki * integral + Kd * derivative.
-    set previous_error to error.
-    return output.
-}
